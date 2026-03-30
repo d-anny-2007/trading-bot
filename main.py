@@ -18,7 +18,11 @@ import shared_data
 from dashboard import start_dashboard
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
-# Configure logging
+import os
+
+# Ensure logs directory exists
+os.makedirs('logs', exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
