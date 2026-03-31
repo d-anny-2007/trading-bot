@@ -1,6 +1,6 @@
 import time
 import logging
-import threading
+import os
 import pandas as pd
 from datetime import datetime
 
@@ -19,29 +19,30 @@ from dashboard import start_dashboard
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 # Ensure logs directory exists
-import os
-os.makedirs('logs', exist_ok=True)
+os.makedirs("logs", exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler('logs/bot.log'),
+        logging.FileHandler("logs/bot.log"),
         logging.StreamHandler()
     ]
 )
+
 
 def get_last_candle_time(df: pd.DataFrame) -> int:
     if df is None or df.empty:
         return 0
     return int(df.index[-1].timestamp())
 
+
 def main():
     # Start dashboard
     start_dashboard()
 
     # Telegram
-    telegram = TelegramSender(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) if TELEGRAM_BOT_TOKEN else None
+    telegram = TelegramSender(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID else None
 
     # Trade manager
     trade_manager = TradeManager()
@@ -50,25 +51,26 @@ def main():
 
     # Build components per symbol
     components = {}
-    for sym, cfg in [('BTCUSD', BTCUSD_CONFIG), ('ETHUSD', ETHUSD_CONFIG), ('XAUUSD', XAUUSD_CONFIG)]:
+    for sym, cfg in [("BTCUSD", BTCUSD_CONFIG), ("ETHUSD", ETHUSD_CONFIG), ("XAUUSD", XAUUSD_CONFIG)]:
         components[sym] = {
-            'poi': POIDiscovery(cfg),
-            'focus': FocusManager(cfg),
-            'planner': TradePlanner(cfg),
-            'config': cfg,
+            "poi": POIDiscovery(cfg),
+            "focus": FocusManager(cfg),
+            "planner": TradePlanner(cfg),
+            "config": cfg,
         }
 
-    last_5m_candle_time = {'BTCUSD': 0, 'ETHUSD': 0, 'XAUUSD': 0}
-    # Track active POI to avoid duplicate signals
-    active_poi_state = {'BTCUSD': {'touch_idx': None, 'processed': False},
-                        'ETHUSD': {'touch_idx': None, 'processed': False},
-                        'XAUUSD': {'touch_idx': None, 'processed': False}}
+    last_5m_candle_time = {"BTCUSD": 0, "ETHUSD": 0, "XAUUSD": 0}
+    active_poi_state = {
+        "BTCUSD": {"touch_idx": None, "processed": False},
+        "ETHUSD": {"touch_idx": None, "processed": False},
+        "XAUUSD": {"touch_idx": None, "processed": False},
+    }
 
     logging.info("Trading bot started. Waiting for new 5m candles...")
 
     while True:
         try:
-            time.sleep(60)  # Check every minute
+            time.sleep(60)
 
             # Fetch data
             btc_data = {}
@@ -85,39 +87,40 @@ def main():
             # Bias detection
             bias_result = determine_overall_bias(btc_data, eth_data, xau_data)
 
-            # Update trade manager (for all symbols)
+            # Update trade manager
             now = datetime.now()
-            for symbol in ['BTCUSD', 'ETHUSD', 'XAUUSD']:
-                if symbol == 'BTCUSD':
-                    df = btc_data['3m']
-                elif symbol == 'ETHUSD':
-                    df = eth_data['3m']
+            for symbol in ["BTCUSD", "ETHUSD", "XAUUSD"]:
+                if symbol == "BTCUSD":
+                    df = btc_data["3m"]
+                elif symbol == "ETHUSD":
+                    df = eth_data["3m"]
                 else:
-                    df = xau_data['3m']
+                    df = xau_data["3m"]
+
                 if df is not None and not df.empty:
-                    current_price = df['close'].iloc[-1]
+                    current_price = df["close"].iloc[-1]
                     trade_manager.update(symbol, current_price, now, telegram)
 
             # Process each symbol for new signals
-            for symbol in ['BTCUSD', 'ETHUSD', 'XAUUSD']:
-                cfg = components[symbol]['config']
-                poi = components[symbol]['poi']
-                focus = components[symbol]['focus']
-                planner = components[symbol]['planner']
+            for symbol in ["BTCUSD", "ETHUSD", "XAUUSD"]:
+                cfg = components[symbol]["config"]
+                poi = components[symbol]["poi"]
+                focus = components[symbol]["focus"]
+                planner = components[symbol]["planner"]
 
                 # Get data
-                if symbol == 'BTCUSD':
-                    df_5m = btc_data['5m']
-                    df_3m = btc_data['3m']
-                    df_15m = btc_data['15m']
-                elif symbol == 'ETHUSD':
-                    df_5m = eth_data['5m']
-                    df_3m = eth_data['3m']
-                    df_15m = eth_data['15m']
+                if symbol == "BTCUSD":
+                    df_5m = btc_data["5m"]
+                    df_3m = btc_data["3m"]
+                    df_15m = btc_data["15m"]
+                elif symbol == "ETHUSD":
+                    df_5m = eth_data["5m"]
+                    df_3m = eth_data["3m"]
+                    df_15m = eth_data["15m"]
                 else:
-                    df_5m = xau_data['5m']
-                    df_3m = xau_data['3m']
-                    df_15m = xau_data['15m']
+                    df_5m = xau_data["5m"]
+                    df_3m = xau_data["3m"]
+                    df_15m = xau_data["15m"]
 
                 if df_5m is None or df_5m.empty:
                     continue
@@ -125,53 +128,53 @@ def main():
                 current_candle_time = get_last_candle_time(df_5m)
                 if current_candle_time > last_5m_candle_time[symbol]:
                     last_5m_candle_time[symbol] = current_candle_time
-                    current_price = df_5m['close'].iloc[-1]
-                    bias = bias_result.get(symbol, {}).get('bias', 'unclear')
+                    current_price = df_5m["close"].iloc[-1]
+                    bias = bias_result.get(symbol, {}).get("bias", "unclear")
 
-                    if bias in ['bullish', 'bearish']:
+                    if bias in ["bullish", "bearish"]:
                         candidates = poi.get_candidates(df_5m, bias, current_price, df_15m=df_15m)
                         focus.update(current_price, candidates, bias)
                         state = focus.get_state()
                         logging.info(f"[{symbol}] Bias: {bias}, Active: {state['active_poi']}, Watchlist: {state['watchlist']}")
 
-                        current_active = state['active_poi']
+                        current_active = state["active_poi"]
                         if current_active is None:
-                            active_poi_state[symbol] = {'touch_idx': None, 'processed': False}
+                            active_poi_state[symbol] = {"touch_idx": None, "processed": False}
                         else:
-                            if active_poi_state[symbol]['touch_idx'] is None:
-                                # Find touch index in 3m
+                            if active_poi_state[symbol]["touch_idx"] is None:
                                 touch_idx = None
-                                for i in range(len(df_3m)-1, -1, -1):
+                                for i in range(len(df_3m) - 1, -1, -1):
                                     candle = df_3m.iloc[i]
-                                    if (bias == 'bullish' and candle['low'] <= current_active) or \
-                                       (bias == 'bearish' and candle['high'] >= current_active):
+                                    if (bias == "bullish" and candle["low"] <= current_active) or \
+                                       (bias == "bearish" and candle["high"] >= current_active):
                                         touch_idx = i
                                         break
                                 if touch_idx is not None:
-                                    active_poi_state[symbol] = {'touch_idx': touch_idx, 'processed': False}
+                                    active_poi_state[symbol] = {"touch_idx": touch_idx, "processed": False}
                                 else:
-                                    active_poi_state[symbol] = {'touch_idx': None, 'processed': False}
+                                    active_poi_state[symbol] = {"touch_idx": None, "processed": False}
                     else:
                         logging.info(f"[{symbol}] Bias unclear, no POI update.")
 
-                # Check for confirmation on active POI (only if not processed)
+                # Check for confirmation on active POI
                 state = focus.get_state()
-                current_active = state['active_poi']
-                if (current_active is not None and
-                    active_poi_state[symbol]['touch_idx'] is not None and
-                    not active_poi_state[symbol]['processed']):
-                    # Get 3m data for confirmation
-                    if symbol == 'BTCUSD':
-                        df_confirm = btc_data['3m']
-                    elif symbol == 'ETHUSD':
-                        df_confirm = eth_data['3m']
+                current_active = state["active_poi"]
+                if (
+                    current_active is not None
+                    and active_poi_state[symbol]["touch_idx"] is not None
+                    and not active_poi_state[symbol]["processed"]
+                ):
+                    if symbol == "BTCUSD":
+                        df_confirm = btc_data["3m"]
+                    elif symbol == "ETHUSD":
+                        df_confirm = eth_data["3m"]
                     else:
-                        df_confirm = xau_data['3m']
+                        df_confirm = xau_data["3m"]
 
                     if df_confirm is not None and not df_confirm.empty:
-                        direction = bias_result.get(symbol, {}).get('bias', 'unclear')
-                        if direction in ['bullish', 'bearish']:
-                            touch_idx = active_poi_state[symbol]['touch_idx']
+                        direction = bias_result.get(symbol, {}).get("bias", "unclear")
+                        if direction in ["bullish", "bearish"]:
+                            touch_idx = active_poi_state[symbol]["touch_idx"]
                             if len(df_confirm) - touch_idx > 1:
                                 conf = detect_confirmation(
                                     df_confirm, touch_idx, current_active, direction,
@@ -181,63 +184,71 @@ def main():
                                     # Volatility filter
                                     df_5m_up_to = df_5m[df_5m.index <= df_confirm.index[-1]]
                                     if len(df_5m_up_to) >= cfg.get("VOLATILITY_ATR_PERIOD", 20):
-                                        atr = calculate_atr(df_5m_up_to.tail(cfg.get("VOLATILITY_ATR_PERIOD", 20)),
-                                                            period=cfg.get("VOLATILITY_ATR_PERIOD", 20))
-                                        atr_pct = atr / df_confirm.iloc[conf['index']]['close']
+                                        atr = calculate_atr(
+                                            df_5m_up_to.tail(cfg.get("VOLATILITY_ATR_PERIOD", 20)),
+                                            period=cfg.get("VOLATILITY_ATR_PERIOD", 20)
+                                        )
+                                        atr_pct = atr / df_confirm.iloc[conf["index"]]["close"]
                                         if atr_pct < cfg.get("VOLATILITY_MIN_ATR_PCT", 0.0):
                                             logging.info(f"[{symbol}] Skipped due to low volatility")
-                                            active_poi_state[symbol]['processed'] = True
+                                            active_poi_state[symbol]["processed"] = True
                                             continue
 
                                     plan = planner.build_plan(
                                         df_confirm, touch_idx, current_active, direction,
-                                        confirmation_idx=conf['index']
+                                        confirmation_idx=conf["index"]
                                     )
                                     if plan is not None:
-                                        # Build signal dict
                                         signal = {
-                                            'symbol': symbol,
-                                            'direction': direction,
-                                            'bias': bias_result.get(symbol, {}).get('bias', 'unclear'),
-                                            'poi': current_active,
-                                            'confirmation_pattern': conf['pattern'],
-                                            'entry': plan['entry'],
-                                            'sl': plan['sl'],
-                                            'tp1': plan['tp1'],
-                                            'tp2': plan['tp2'],
-                                            'tp3': plan['tp3'],
-                                            'rr': plan['rr']
+                                            "symbol": symbol,
+                                            "direction": direction,
+                                            "bias": bias_result.get(symbol, {}).get("bias", "unclear"),
+                                            "poi": current_active,
+                                            "confirmation_pattern": conf["pattern"],
+                                            "entry": plan["entry"],
+                                            "sl": plan["sl"],
+                                            "tp1": plan["tp1"],
+                                            "tp2": plan["tp2"],
+                                            "tp3": plan["tp3"],
+                                            "rr": plan["rr"]
                                         }
+
+                                        # Add trade first so it gets a trade_id and trade_ref
+                                        trade = trade_manager.add_trade(signal)
+
                                         # Store signal for dashboard
                                         shared_data.recent_signals.append({
-                                            'time': datetime.now(),
-                                            'symbol': symbol,
-                                            'direction': direction,
-                                            'entry': plan['entry'],
-                                            'confirmation_pattern': conf['pattern']
+                                            "time": trade["entry_time"],
+                                            "symbol": symbol,
+                                            "direction": direction,
+                                            "trade_id": trade["trade_id"],
+                                            "trade_ref": trade["trade_ref"],
+                                            "trade_label": trade["trade_label"],
+                                            "entry": trade["entry"],
+                                            "confirmation_pattern": conf["pattern"]
                                         })
+
                                         # Send signal
                                         if telegram:
-                                            success = telegram.send_signal(signal)
+                                            success = telegram.send_signal(trade)
                                             logging.info(f"[{symbol}] Signal sent: {success}")
                                         else:
                                             logging.warning(f"[{symbol}] Telegram not configured, signal not sent.")
-                                        # Add trade to manager
-                                        trade_manager.add_trade(signal)
+
                                         logging.info(f"[{symbol}] Trade plan: {plan}")
-                                        # Mark processed to avoid duplicate
-                                        active_poi_state[symbol]['processed'] = True
+                                        active_poi_state[symbol]["processed"] = True
                                     else:
                                         logging.info(f"[{symbol}] Trade skipped: RR below minimum")
-                                        active_poi_state[symbol]['processed'] = True
+                                        active_poi_state[symbol]["processed"] = True
 
-            # Update shared data for dashboard (reference to trade manager's lists)
+            # Update shared data for dashboard
             shared_data.active_trades = trade_manager.active_trades
             shared_data.closed_trades = trade_manager.closed_trades
 
         except Exception as e:
             logging.exception(f"Unexpected error in main loop: {e}")
             time.sleep(60)
+
 
 if __name__ == "__main__":
     main()
