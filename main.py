@@ -85,6 +85,14 @@ def main():
                 xau_data[tf] = fetcher.fetch_xau(tf)
                 time.sleep(0.5)
 
+            # After fetching all data, check if we have any data
+            has_data = any(df is not None and not df.empty for df in [
+            btc_data.get("5m"), eth_data.get("5m"), xau_data.get("5m")
+            ])
+            if not has_data:
+              logging.warning("No data fetched for any symbol. Skipping cycle.")
+              continue
+
             # Bias detection
             bias_result = determine_overall_bias(btc_data, eth_data, xau_data)
 
