@@ -3,19 +3,17 @@ import requests
 import pandas as pd
 import time
 from typing import Optional
-from config import CANDLE_LIMIT
-from config import ALPHA_VANTAGE_KEY
-self.alpha_vantage_key = ALPHA_VANTAGE_KEY
+from config import CANDLE_LIMIT, ALPHA_VANTAGE_KEY
 
 class DataFetcher:
     def __init__(self):
-        # Use KuCoin (often accessible from many regions)
+        # Use KuCoin for crypto (often accessible)
         self.kucoin = ccxt.kucoin()
         # Cache for XAU 1min data
         self._xau_1min_cache = None
         self._xau_1min_cache_time = 0
         self._xau_cache_ttl = 600  # seconds (10 minutes)
-        self.alpha_vantage_key = None  # set via .env
+        self.alpha_vantage_key = ALPHA_VANTAGE_KEY
 
     def fetch_btc(self, timeframe: str) -> Optional[pd.DataFrame]:
         try:
