@@ -71,7 +71,7 @@ def main():
 
     while True:
         try:
-            time.sleep(30)
+            time.sleep(60)
 
             # Fetch data for all symbols
             btc_data = {}
