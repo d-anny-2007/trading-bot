@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 
 SYMBOLS = {
     "BTCUSD": "BTC/USDT",
