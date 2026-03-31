@@ -38,8 +38,10 @@ def get_last_candle_time(df: pd.DataFrame) -> int:
     return int(df.index[-1].timestamp())
 
 def main():
-    # Start dashboard in background
+    # Start dashboard only if enabled (safe for future scaling)
+   if os.environ.get("ENABLE_DASHBOARD", "true").lower() == "true":
     start_dashboard()
+    
 
     # Initialize Telegram sender if credentials provided
     telegram = TelegramSender(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) if TELEGRAM_BOT_TOKEN else None
