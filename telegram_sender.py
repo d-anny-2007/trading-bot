@@ -13,9 +13,15 @@ class TelegramSender:
             symbol, direction, bias, poi, confirmation_pattern,
             entry, sl, tp1, tp2, tp3, rr
         """
+        # Determine direction emoji
+        if signal['direction'].lower() == 'bullish':
+            dir_emoji = "🟢"
+        else:
+            dir_emoji = "🔴"
+
         text = (
-            f"📊 *{signal['symbol']} SIGNAL*\n\n"
-            f"🔹 *Direction:* {signal['direction'].upper()}\n"
+            f"{dir_emoji} *{signal['symbol']} SIGNAL*\n\n"
+            f"📊 *Direction:* {signal['direction'].upper()}\n"
             f"📈 *Bias:* {signal['bias']}\n"
             f"📍 *POI:* {signal['poi']:.2f}\n"
             f"✅ *Confirmation:* {signal['confirmation_pattern']}\n\n"
@@ -27,6 +33,57 @@ class TelegramSender:
             f"📊 *Risk/Reward:* {signal['rr']:.2f}\n\n"
             f"⚡ *Trade with discipline. Manage risk.*"
         )
+        return self.send_message(text)
+
+    def send_update(self, event_type: str, trade: dict) -> bool:
+        """Send a formatted update message for trade events."""
+        if event_type == 'SL':
+            text = (
+                f"❌ *{trade['symbol']} UPDATE*\n\n"
+                f"Trade ID: `{trade.get('trade_id', '?')}`\n"
+                f"Direction: {trade['direction'].upper()}\n"
+                f"Entry: {trade['entry']:.2f}\n"
+                f"Stop Loss: {trade['sl']:.2f}\n"
+                f"Result: **SL HIT** at {trade['exit_price']:.2f}\n"
+                f"Loss: -{abs(trade['entry'] - trade['exit_price']):.2f}\n"
+            )
+        elif event_type == 'TP1':
+            text = (
+                f"✅ *{trade['symbol']} UPDATE*\n\n"
+                f"Trade ID: `{trade.get('trade_id', '?')}`\n"
+                f"Direction: {trade['direction'].upper()}\n"
+                f"Entry: {trade['entry']:.2f}\n"
+                f"TP1 Hit: {trade['tp1']:.2f}\n"
+                f"SL moved to BE: {trade['entry']:.2f}\n"
+            )
+        elif event_type == 'TP2':
+            text = (
+                f"✅ *{trade['symbol']} UPDATE*\n\n"
+                f"Trade ID: `{trade.get('trade_id', '?')}`\n"
+                f"Direction: {trade['direction'].upper()}\n"
+                f"Entry: {trade['entry']:.2f}\n"
+                f"TP2 Hit: {trade['tp2']:.2f}\n"
+            )
+        elif event_type == 'TP3':
+            text = (
+                f"🏆 *{trade['symbol']} UPDATE*\n\n"
+                f"Trade ID: `{trade.get('trade_id', '?')}`\n"
+                f"Direction: {trade['direction'].upper()}\n"
+                f"Entry: {trade['entry']:.2f}\n"
+                f"TP3 Hit: {trade['tp3']:.2f}\n"
+                f"**Trade closed** with total profit: +{abs(trade['entry'] - trade['tp3']):.2f}\n"
+            )
+        elif event_type == 'BE_MOVED':
+            text = (
+                f"🔒 *{trade['symbol']} UPDATE*\n\n"
+                f"Trade ID: `{trade.get('trade_id', '?')}`\n"
+                f"Direction: {trade['direction'].upper()}\n"
+                f"Entry: {trade['entry']:.2f}\n"
+                f"SL moved to break-even at {trade['sl']:.2f}\n"
+            )
+        else:
+            return False
+
         return self.send_message(text)
 
     def send_message(self, text: str) -> bool:

@@ -18,9 +18,8 @@ import shared_data
 from dashboard import start_dashboard
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
-import os
-
 # Ensure logs directory exists
+import os
 os.makedirs('logs', exist_ok=True)
 
 logging.basicConfig(
@@ -38,12 +37,10 @@ def get_last_candle_time(df: pd.DataFrame) -> int:
     return int(df.index[-1].timestamp())
 
 def main():
-    # Start dashboard only if enabled (safe for future scaling)
-   if os.environ.get("ENABLE_DASHBOARD", "true").lower() == "true":
+    # Start dashboard
     start_dashboard()
-    
 
-    # Initialize Telegram sender if credentials provided
+    # Telegram
     telegram = TelegramSender(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) if TELEGRAM_BOT_TOKEN else None
 
     # Trade manager
@@ -59,10 +56,10 @@ def main():
             'focus': FocusManager(cfg),
             'planner': TradePlanner(cfg),
             'config': cfg,
-            'last_trade': {'direction': None, 'timestamp': None}
         }
 
     last_5m_candle_time = {'BTCUSD': 0, 'ETHUSD': 0, 'XAUUSD': 0}
+    # Track active POI to avoid duplicate signals
     active_poi_state = {'BTCUSD': {'touch_idx': None, 'processed': False},
                         'ETHUSD': {'touch_idx': None, 'processed': False},
                         'XAUUSD': {'touch_idx': None, 'processed': False}}
@@ -71,9 +68,9 @@ def main():
 
     while True:
         try:
-            time.sleep(60)
+            time.sleep(60)  # Check every minute
 
-            # Fetch data for all symbols
+            # Fetch data
             btc_data = {}
             eth_data = {}
             xau_data = {}
@@ -85,18 +82,10 @@ def main():
                 xau_data[tf] = fetcher.fetch_xau(tf)
                 time.sleep(0.5)
 
-            # After fetching all data, check if we have any data
-            has_data = any(df is not None and not df.empty for df in [
-            btc_data.get("5m"), eth_data.get("5m"), xau_data.get("5m")
-            ])
-            if not has_data:
-              logging.warning("No data fetched for any symbol. Skipping cycle.")
-              continue
-
             # Bias detection
             bias_result = determine_overall_bias(btc_data, eth_data, xau_data)
 
-            # Update trade manager for each symbol using latest 3m close
+            # Update trade manager (for all symbols)
             now = datetime.now()
             for symbol in ['BTCUSD', 'ETHUSD', 'XAUUSD']:
                 if symbol == 'BTCUSD':
@@ -109,14 +98,14 @@ def main():
                     current_price = df['close'].iloc[-1]
                     trade_manager.update(symbol, current_price, now, telegram)
 
+            # Process each symbol for new signals
             for symbol in ['BTCUSD', 'ETHUSD', 'XAUUSD']:
                 cfg = components[symbol]['config']
                 poi = components[symbol]['poi']
                 focus = components[symbol]['focus']
                 planner = components[symbol]['planner']
-                last_trade = components[symbol]['last_trade']
 
-                # Select appropriate data
+                # Get data
                 if symbol == 'BTCUSD':
                     df_5m = btc_data['5m']
                     df_3m = btc_data['3m']
@@ -149,7 +138,7 @@ def main():
                         if current_active is None:
                             active_poi_state[symbol] = {'touch_idx': None, 'processed': False}
                         else:
-                            if active_poi_state[symbol]['touch_idx'] is None and current_active is not None:
+                            if active_poi_state[symbol]['touch_idx'] is None:
                                 # Find touch index in 3m
                                 touch_idx = None
                                 for i in range(len(df_3m)-1, -1, -1):
@@ -165,13 +154,13 @@ def main():
                     else:
                         logging.info(f"[{symbol}] Bias unclear, no POI update.")
 
-                # Check for confirmation on active POI
+                # Check for confirmation on active POI (only if not processed)
                 state = focus.get_state()
                 current_active = state['active_poi']
                 if (current_active is not None and
                     active_poi_state[symbol]['touch_idx'] is not None and
                     not active_poi_state[symbol]['processed']):
-                    # Use the appropriate 3m dataframe
+                    # Get 3m data for confirmation
                     if symbol == 'BTCUSD':
                         df_confirm = btc_data['3m']
                     elif symbol == 'ETHUSD':
@@ -205,55 +194,44 @@ def main():
                                         confirmation_idx=conf['index']
                                     )
                                     if plan is not None:
-                                       signal = {
-                                           'symbol': symbol,
-                                           'direction': direction,
-                                           'bias': bias_result.get(symbol, {}).get('bias', 'unclear'),
-                                           'poi': current_active,
-                                           'confirmation_pattern': conf['pattern'],
-                                           'entry': plan['entry'],
-                                           'sl': plan['sl'],
-                                           'tp1': plan['tp1'],
-                                           'tp2': plan['tp2'],
-                                           'tp3': plan['tp3'],
-                                           'rr': plan['rr']
+                                        # Build signal dict
+                                        signal = {
+                                            'symbol': symbol,
+                                            'direction': direction,
+                                            'bias': bias_result.get(symbol, {}).get('bias', 'unclear'),
+                                            'poi': current_active,
+                                            'confirmation_pattern': conf['pattern'],
+                                            'entry': plan['entry'],
+                                            'sl': plan['sl'],
+                                            'tp1': plan['tp1'],
+                                            'tp2': plan['tp2'],
+                                            'tp3': plan['tp3'],
+                                            'rr': plan['rr']
                                         }
                                         # Store signal for dashboard
-                                    shared_data.recent_signals.append({
-                                           'time': datetime.now(),
-                                           'symbol': symbol,
-                                           'direction': direction,
-                                           'entry': plan['entry'],
-                                           'confirmation_pattern': conf['pattern']
-                                    })
-                                    if telegram:
-                                       success = telegram.send_signal(signal)
-                                       logging.info(f"[{symbol}] Signal sent: {success}")
-                                    else:
-                                       logging.warning(f"[{symbol}] Telegram not configured, signal not sent.")
-                                       trade_manager.add_trade(signal)
-                                       logging.info(f"[{symbol}] Trade plan: {plan}")
-                                       active_poi_state[symbol]['processed'] = True
-                                        # Store signal for dashboard
-                                    shared_data.recent_signals.append({
+                                        shared_data.recent_signals.append({
                                             'time': datetime.now(),
                                             'symbol': symbol,
                                             'direction': direction,
                                             'entry': plan['entry'],
                                             'confirmation_pattern': conf['pattern']
                                         })
-                                    if telegram:
-                                            telegram.send_signal(signal)
+                                        # Send signal
+                                        if telegram:
+                                            success = telegram.send_signal(signal)
+                                            logging.info(f"[{symbol}] Signal sent: {success}")
+                                        else:
+                                            logging.warning(f"[{symbol}] Telegram not configured, signal not sent.")
                                         # Add trade to manager
-                                            trade_manager.add_trade(signal)
-                                            logging.info(f"[{symbol}] Confirmation: {conf['pattern']}")
-                                            logging.info(f"[{symbol}] Trade plan: {plan}")
-                                            active_poi_state[symbol]['processed'] = True
+                                        trade_manager.add_trade(signal)
+                                        logging.info(f"[{symbol}] Trade plan: {plan}")
+                                        # Mark processed to avoid duplicate
+                                        active_poi_state[symbol]['processed'] = True
                                     else:
                                         logging.info(f"[{symbol}] Trade skipped: RR below minimum")
                                         active_poi_state[symbol]['processed'] = True
 
-            # Update shared data for dashboard
+            # Update shared data for dashboard (reference to trade manager's lists)
             shared_data.active_trades = trade_manager.active_trades
             shared_data.closed_trades = trade_manager.closed_trades
 
