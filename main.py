@@ -205,34 +205,50 @@ def main():
                                         confirmation_idx=conf['index']
                                     )
                                     if plan is not None:
-                                        signal = {
-                                            'symbol': symbol,
-                                            'direction': direction,
-                                            'bias': bias_result.get(symbol, {}).get('bias', 'unclear'),
-                                            'poi': current_active,
-                                            'confirmation_pattern': conf['pattern'],
-                                            'entry': plan['entry'],
-                                            'sl': plan['sl'],
-                                            'tp1': plan['tp1'],
-                                            'tp2': plan['tp2'],
-                                            'tp3': plan['tp3'],
-                                            'rr': plan['rr']
+                                       signal = {
+                                           'symbol': symbol,
+                                           'direction': direction,
+                                           'bias': bias_result.get(symbol, {}).get('bias', 'unclear'),
+                                           'poi': current_active,
+                                           'confirmation_pattern': conf['pattern'],
+                                           'entry': plan['entry'],
+                                           'sl': plan['sl'],
+                                           'tp1': plan['tp1'],
+                                           'tp2': plan['tp2'],
+                                           'tp3': plan['tp3'],
+                                           'rr': plan['rr']
                                         }
                                         # Store signal for dashboard
-                                        shared_data.recent_signals.append({
+                                    shared_data.recent_signals.append({
+                                           'time': datetime.now(),
+                                           'symbol': symbol,
+                                           'direction': direction,
+                                           'entry': plan['entry'],
+                                           'confirmation_pattern': conf['pattern']
+                                    })
+                                    if telegram:
+                                       success = telegram.send_signal(signal)
+                                       logging.info(f"[{symbol}] Signal sent: {success}")
+                                    else:
+                                       logging.warning(f"[{symbol}] Telegram not configured, signal not sent.")
+                                       trade_manager.add_trade(signal)
+                                       logging.info(f"[{symbol}] Trade plan: {plan}")
+                                       active_poi_state[symbol]['processed'] = True
+                                        # Store signal for dashboard
+                                    shared_data.recent_signals.append({
                                             'time': datetime.now(),
                                             'symbol': symbol,
                                             'direction': direction,
                                             'entry': plan['entry'],
                                             'confirmation_pattern': conf['pattern']
                                         })
-                                        if telegram:
+                                    if telegram:
                                             telegram.send_signal(signal)
                                         # Add trade to manager
-                                        trade_manager.add_trade(signal)
-                                        logging.info(f"[{symbol}] Confirmation: {conf['pattern']}")
-                                        logging.info(f"[{symbol}] Trade plan: {plan}")
-                                        active_poi_state[symbol]['processed'] = True
+                                            trade_manager.add_trade(signal)
+                                            logging.info(f"[{symbol}] Confirmation: {conf['pattern']}")
+                                            logging.info(f"[{symbol}] Trade plan: {plan}")
+                                            active_poi_state[symbol]['processed'] = True
                                     else:
                                         logging.info(f"[{symbol}] Trade skipped: RR below minimum")
                                         active_poi_state[symbol]['processed'] = True
