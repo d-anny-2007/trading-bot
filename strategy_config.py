@@ -1,12 +1,12 @@
 # Strategy parameters per symbol
 
-# Refined strategy for BTCUSD (and ETHUSD)
+# Refined strategy for BTCUSD and ETHUSD (high‑quality only)
 BTCUSD_CONFIG = {
     "MAX_WATCHLIST_SIZE": 3,
     "MAX_POI_DISTANCE_PCT": 0.02,
-    "MIN_POI_DISTANCE_PCT": 0.002,
+    "MIN_POI_DISTANCE_PCT": 0.004,          # 0.4%
     "MERGE_THRESHOLD_PCT": 0.0005,
-    "SWING_STRENGTH_PCT": 0.002,
+    "SWING_STRENGTH_PCT": 0.003,            # 0.3%
     "EXPIRY_CANDLES": 10,
     "EXPIRY_DISTANCE_PCT": 0.005,
 
@@ -16,24 +16,30 @@ BTCUSD_CONFIG = {
     "CONFIRMATION_REJECTION_MIN_BODY_WICK_RATIO": 1.5,
     "CONFIRMATION_SWEEP_RECLAIM_CLOSE_BEYOND_POI": True,
 
-    "VOLATILITY_MIN_ATR_PCT": 0.002,
+    "VOLATILITY_MIN_ATR_PCT": 0.0025,       # 0.25%
     "VOLATILITY_ATR_PERIOD": 20,
 
-    "MIN_RR_FOR_TP1": 1.0,
+    "MIN_RR_FOR_TP1": 1.5,                  # increased
+    "MIN_RISK_PCT": 0.002,                  # 0.2% minimum risk
 
     "USE_15M_POI_FILTER": True,
+    "USE_HTF_SWING_FILTER": True,           # require 15m swing
+    "MIN_DISPLACEMENT_PCT": 0.005,          # 0.5% move away required
+    "MAX_TAP_COUNT": 2,
+
+    "FIXED_RR_TARGETS": (1.5, 2.5, 3.5),
+    "ATR_STOP_MULTIPLIER": 0.5,
 
     "ANTI_FLIP_COOLDOWN_MINUTES": 0,
 }
 
-# ETHUSD uses the same config as BTCUSD
 ETHUSD_CONFIG = BTCUSD_CONFIG.copy()
 
-# Strategy for XAUUSD (unchanged)
+# Strategy for XAUUSD (adapted)
 XAUUSD_CONFIG = {
     "MAX_WATCHLIST_SIZE": 3,
     "MAX_POI_DISTANCE_PCT": 0.02,
-    "MIN_POI_DISTANCE_PCT": 0.002,
+    "MIN_POI_DISTANCE_PCT": 0.002,          # 0.2%
     "MERGE_THRESHOLD_PCT": 0.0005,
     "SWING_STRENGTH_PCT": 0.002,
     "EXPIRY_CANDLES": 10,
@@ -48,9 +54,16 @@ XAUUSD_CONFIG = {
     "VOLATILITY_MIN_ATR_PCT": 0.001,
     "VOLATILITY_ATR_PERIOD": 20,
 
-    "MIN_RR_FOR_TP1": 1.2,
+    "MIN_RR_FOR_TP1": 1.5,                  # increased
+    "MIN_RISK_PCT": 0.001,                  # 0.1%
 
     "USE_15M_POI_FILTER": False,
+    "USE_HTF_SWING_FILTER": False,
+    "MIN_DISPLACEMENT_PCT": 0.005,          # still check displacement
+    "MAX_TAP_COUNT": 2,
+
+    "FIXED_RR_TARGETS": (1.5, 2.5, 3.5),
+    "ATR_STOP_MULTIPLIER": 0.5,
 
     "ANTI_FLIP_COOLDOWN_MINUTES": 0,
 }

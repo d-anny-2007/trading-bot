@@ -181,12 +181,14 @@ def main():
                                     config=cfg
                                 )
                                 if conf:
-                                    # Volatility filter
+                                    # Volatility filter (compute ATR)
                                     df_5m_up_to = df_5m[df_5m.index <= df_confirm.index[-1]]
-                                    if len(df_5m_up_to) >= cfg.get("VOLATILITY_ATR_PERIOD", 20):
+                                    atr_period = cfg.get("VOLATILITY_ATR_PERIOD", 20)
+                                    atr = 0.0
+                                    if len(df_5m_up_to) >= atr_period:
                                         atr = calculate_atr(
-                                            df_5m_up_to.tail(cfg.get("VOLATILITY_ATR_PERIOD", 20)),
-                                            period=cfg.get("VOLATILITY_ATR_PERIOD", 20)
+                                            df_5m_up_to.tail(atr_period),
+                                            period=atr_period
                                         )
                                         atr_pct = atr / df_confirm.iloc[conf["index"]]["close"]
                                         if atr_pct < cfg.get("VOLATILITY_MIN_ATR_PCT", 0.0):
@@ -196,7 +198,7 @@ def main():
 
                                     plan = planner.build_plan(
                                         df_confirm, touch_idx, current_active, direction,
-                                        confirmation_idx=conf["index"]
+                                        confirmation_idx=conf["index"], atr=atr
                                     )
                                     if plan is not None:
                                         signal = {
@@ -238,7 +240,7 @@ def main():
                                         logging.info(f"[{symbol}] Trade plan: {plan}")
                                         active_poi_state[symbol]["processed"] = True
                                     else:
-                                        logging.info(f"[{symbol}] Trade skipped: RR below minimum")
+                                        logging.info(f"[{symbol}] Trade skipped: RR below minimum or risk too small")
                                         active_poi_state[symbol]["processed"] = True
 
             # Update shared data for dashboard

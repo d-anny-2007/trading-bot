@@ -1,15 +1,23 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 
 class POIDiscovery:
     def __init__(self, config: dict):
         self.max_watchlist = config.get("MAX_WATCHLIST_SIZE", 3)
         self.max_distance_pct = config.get("MAX_POI_DISTANCE_PCT", 0.02)
-        self.min_distance_pct = config.get("MIN_POI_DISTANCE_PCT", 0.002)
+        self.min_distance_pct = config.get("MIN_POI_DISTANCE_PCT", 0.004)
         self.merge_threshold_pct = config.get("MERGE_THRESHOLD_PCT", 0.0005)
-        self.swing_strength_pct = config.get("SWING_STRENGTH_PCT", 0.002)
+        self.swing_strength_pct = config.get("SWING_STRENGTH_PCT", 0.003)
         self.use_15m_filter = config.get("USE_15M_POI_FILTER", False)
+        self.min_displacement_pct = config.get("MIN_DISPLACEMENT_PCT", 0.005)   # 0.5%
+        self.max_tap_count = config.get("MAX_TAP_COUNT", 2)
+        self.use_htf_swing = config.get("USE_HTF_SWING_FILTER", True)
+
+        # Track tap history and formation indices for levels
+        self.tap_history = defaultdict(list)      # level -> list of tap indices
+        self.formation_index = {}                  # level -> index of first detection
 
     def _is_swing_high(self, highs: np.ndarray, i: int, window: int = 5) -> bool:
         left = max(highs[i-window:i]) if i-window >= 0 else highs[i]
@@ -41,11 +49,9 @@ class POIDiscovery:
             body = abs(candle['close'] - candle['open'])
             if body == 0:
                 continue
-            # Long upper wick
             if candle['high'] - max(candle['open'], candle['close']) > body * 1.5:
                 if self._is_swing_high(df['high'].values, i, window):
                     protected_highs.append((candle['high'], i))
-            # Long lower wick
             if min(candle['open'], candle['close']) - candle['low'] > body * 1.5:
                 if self._is_swing_low(df['low'].values, i, window):
                     protected_lows.append((candle['low'], i))
@@ -57,7 +63,7 @@ class POIDiscovery:
             prev = df.iloc[i-1]
             curr = df.iloc[i]
             move_pct = abs(curr['close'] - prev['close']) / prev['close']
-            if move_pct < 0.002:
+            if move_pct < 0.003:      # require at least 0.3% move
                 continue
             if bias == 'bullish' and curr['close'] > curr['open'] and prev['close'] < prev['open']:
                 ob_candidates.append((prev['low'], i-1))
@@ -98,6 +104,50 @@ class POIDiscovery:
                     return True
         return False
 
+    def _mitigation_count(self, level: float, current_idx: int, lookback: int = 50) -> int:
+        """Count how many times price has tapped this level in the recent past."""
+        taps = self.tap_history.get(level, [])
+        return sum(1 for idx in taps if current_idx - idx <= lookback)
+
+    def _has_displacement(self, df: pd.DataFrame, formation_idx: int, level: float, threshold_pct: float = 0.005) -> bool:
+        """
+        Check if price moved away from the level by at least threshold_pct after formation.
+        """
+        if formation_idx is None:
+            return False
+        after_df = df.iloc[formation_idx+1:]
+        if len(after_df) < 5:
+            return False
+        max_high = after_df['high'].max()
+        min_low = after_df['low'].min()
+        # For bullish, we want price to have moved up above level; for bearish, down below.
+        # We check both directions.
+        upward = (max_high - level) / level > threshold_pct
+        downward = (level - min_low) / level > threshold_pct
+        return upward or downward
+
+    def _is_strong_structure(self, df_5m: pd.DataFrame, idx: int, level: float, bias: str,
+                             df_15m: Optional[pd.DataFrame]) -> bool:
+        """Determine if a level qualifies as a strong POI."""
+        # 1. Check HTF confluence if required
+        if self.use_htf_swing and df_15m is not None:
+            if bias == 'bullish' and not self._is_swing_low_15m(level, df_15m):
+                return False
+            if bias == 'bearish' and not self._is_swing_high_15m(level, df_15m):
+                return False
+        # 2. Check displacement: price must have moved strongly away after formation
+        formation_idx = self.formation_index.get(level)
+        if formation_idx is None:
+            # First time seeing this level – we don't have displacement data yet; we'll track it.
+            self.formation_index[level] = idx
+            return False
+        if not self._has_displacement(df_5m, formation_idx, level, self.min_displacement_pct):
+            return False
+        # 3. Mitigation count: if tapped too many times recently, reject
+        if self._mitigation_count(level, idx) >= self.max_tap_count:
+            return False
+        return True
+
     def get_candidates(self, df_5m: pd.DataFrame, bias: str, current_price: float,
                        df_15m: Optional[pd.DataFrame] = None) -> List[Dict]:
         if bias not in ['bullish', 'bearish']:
@@ -123,19 +173,7 @@ class POIDiscovery:
             for level, idx in order_blocks:
                 candidates_raw.append((level, idx, 'order_block'))
 
-        # Filter by 15m swing if enabled
-        if self.use_15m_filter and df_15m is not None:
-            filtered_by_15m = []
-            for level, idx, typ in candidates_raw:
-                if bias == 'bullish':
-                    if self._is_swing_low_15m(level, df_15m):
-                        filtered_by_15m.append((level, idx, typ))
-                else:
-                    if self._is_swing_high_15m(level, df_15m):
-                        filtered_by_15m.append((level, idx, typ))
-            candidates_raw = filtered_by_15m
-
-        # Deduplicate and merge close levels
+        # Merge close levels
         levels_dict = {}
         for level, idx, typ in candidates_raw:
             key = round(level / (current_price * self.merge_threshold_pct)) if self.merge_threshold_pct > 0 else level
@@ -143,9 +181,10 @@ class POIDiscovery:
                 levels_dict[key] = (level, idx, typ)
         unique = list(levels_dict.values())
 
-        # Filter by distance and direction
-        filtered = []
+        # Apply structural filters
+        strong_candidates = []
         for level, idx, typ in unique:
+            # Basic distance filter
             dist_pct = abs(level - current_price) / current_price
             if dist_pct > self.max_distance_pct:
                 continue
@@ -155,28 +194,27 @@ class POIDiscovery:
                 continue
             if dist_pct < self.min_distance_pct:
                 continue
-            filtered.append((level, idx, typ, dist_pct))
 
-        if not filtered:
+            # Now check structural strength
+            if self._is_strong_structure(df_5m, idx, level, bias, df_15m):
+                strong_candidates.append((level, idx, typ, dist_pct))
+            else:
+                continue
+
+        if not strong_candidates:
             return []
 
-        max_idx = len(df_5m) - 1
-        scored = []
-        for level, idx, typ, dist_pct in filtered:
-            recency = idx / max_idx
-            distance_score = 1.0 - (dist_pct / self.max_distance_pct)
-            type_boost = 1.0
-            if typ == 'order_block':
-                type_boost = 1.2
-            elif typ == 'protected_low' or typ == 'protected_high':
-                type_boost = 1.1
-            score = (0.4 * recency) + (0.4 * distance_score) + (0.2 * type_boost)
-            scored.append({
+        # Sort by distance (nearest first) and take up to max_watchlist
+        strong_candidates.sort(key=lambda x: (abs(x[0] - current_price), x[1]))
+        top_candidates = strong_candidates[:self.max_watchlist]
+
+        # Build result list
+        result = []
+        for level, idx, typ, _ in top_candidates:
+            result.append({
                 'level': level,
                 'type': typ,
-                'score': score,
+                'score': 1.0,   # dummy, keep for compatibility
                 'index': idx
             })
-
-        scored.sort(key=lambda x: (-x['score'], abs(x['level'] - current_price)))
-        return scored[:self.max_watchlist]
+        return result
